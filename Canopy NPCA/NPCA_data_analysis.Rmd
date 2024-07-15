@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "NPCA Data analysis"
 author: "Ajwal Dsouza"
 date: "2024-05-23"
 output: html_document
@@ -10,10 +10,11 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::knit_hooks$set(purl = knitr::hook_purl, documentation = 0) # export the r code chunks into a "code-only" R script. 
 ```
 
 The overall goal of this script is to measure the photosynthetic CO2
-flux as micromol CO2/m2 leaf area/s from time-series environment data
+flux as $\mu mols~CO_2~m^{-2}~leaf~area~s^{-1}$ from time-series environment data
 measured in a sealed growth chamber. The time-series environment data
 consists of temperature (C) and CO2 (ppm) measured every minute.
 
@@ -62,7 +63,7 @@ and canopy leaf area.
 Install and load all the necessary packages for this analysis using the
 `librarian` package.
 
-```{r}
+```{r message=FALSE, warning=FALSE, include=FALSE}
 install.packages("librarian", repos='http://cran.us.r-project.org')
 librarian::shelf(plyr,
                  dplyr,
@@ -73,6 +74,8 @@ librarian::shelf(plyr,
                  ggplot2,
                  ggpubr,
                  readr,
+                 EnvStats,
+                 quiet = TRUE,
                  update_all = FALSE)
 ```
 
@@ -91,7 +94,7 @@ First, set the folder that contains the raw data files as `mydir`. Next,
 we list all the files with .csv files in the specified "mydir" as
 `myfiles` and call the list.
 
-```{r import data, message=F, warning=F}
+```{r label data, message=F, warning=F}
 mydir="raw"
 myfiles= list.files(path=mydir, pattern="*.csv", full.names=TRUE)
 myfiles
@@ -103,7 +106,7 @@ The following code imports all the .csv files in the raw data folder
 into one single dataset, called `datamaster`.
 
 ```{r import data}
-data_master <- ldply(myfiles, read.table, sep = ",", fill=T, header = F)%>%     #collectively apply "impost function for all the files in the specified directory
+data_master <- ldply(myfiles, read.table, sep = ",", fill=T, header = F)%>%     #collectively apply "import" function for all the files in the specified directory
   as_tibble()%>%                                                                #Convert the imported data as a tibble
   na.omit()%>%
   select(V = c(V1,V2,V12, V13, V21))%>%
@@ -126,14 +129,13 @@ Next, let us clean the raw data and prep it for the analysis.
 Setting all the columns except 1st to as numeric
 
 ```{r set numeric, message = F}
-data_master[, 2:ncol(data_master)] <- lapply(data_master                       
-                                             [,2:ncol(data_master)], 
-                                             as.numeric)
+data_master[, 2:ncol(data_master)] <- 
+  lapply(data_master[,2:ncol(data_master)], as.numeric)
 ```
 
 Setting first column as date-time variable
 
-```{r set date-time, message=F}
+```{r set date-time}
 data_master$time <- as_datetime(data_master$time)   
 ```
 
@@ -151,7 +153,7 @@ This line sets a threshold value 10 (10 ppm rise between subsequent
 readings) for detecting significant changes (injection events) in the
 `CO2` levels.
 
-```{r threshold}
+```{r set threshold for detection injection events}
 threshold <- 10 
 ```
 
@@ -160,7 +162,7 @@ threshold <- 10
 Based on the defined threshold, identify and remove the injection events
 to save the datafile as `cleaned_data`.
 
-```{r remove injection}
+```{r Identify and remove injection events}
 cleaned_data <- data_master %>%
   mutate(injection = if_else((co2_read - lag(
     co2_read, default = first(co2_read))) > threshold, TRUE, FALSE)) %>%
@@ -196,7 +198,7 @@ Here,
 Create a new column named `minutes` with consecutive numbers starting
 from zero
 
-```{r minutes}
+```{r Creating a minutes column}
 cleaned_data$minutes <- seq(0, by = 1, length.out = nrow(cleaned_data))
 
 # data_master$minutes <- data_master$minutes*10
@@ -208,7 +210,7 @@ If the dataset with readings every minute is to be reduced to retain
 reading for longer intervals (e.g., 10 mins), run the following code by
 specifying the desired time interval in the command `breaks`.
 
-```{r reduce minutes}
+```{r reduce minutes to longer intervals}
 # # #Reducing the dataset by reducing sampling interval
 # groups <- cut(as.POSIXct(data_master$time), breaks="10 min")
 # library(plyr)
@@ -217,7 +219,7 @@ specifying the desired time interval in the command `breaks`.
 
 ## Visualizing the raw CO2 readings
 
-```{r plot co2}
+```{r plot the raw CO2 readings}
 p <-
   ggplot(aes(x=time, y=co2_read), data = data_master) +
   geom_line()+ 
@@ -246,7 +248,7 @@ consecutive readings.
 First, we create a function that calculates the slope and R-squared for
 consecutive points.
 
-```{r slope}
+```{r Function to calculate slope and R-squared for consecutive points}
 calc_slope_rsq <- function(x, y) {
   model <- lm(y ~ x)
   slope <- coef(model)[2]
@@ -266,7 +268,7 @@ This function performs a linear regression on a set of points:
 
 ### Apply the function to calculate slope and R-squared for each window of 30 consecutive points
 
-```{r run slope, message=FALSE}
+```{r run slope function, message=FALSE}
 cleaned_data <- cleaned_data %>%
   mutate(slope = NA, rsq = NA)
 
@@ -294,7 +296,7 @@ for (i in 1:(nrow(cleaned_data) - 30)) {
 
 ### Remove rows where slope and rsq could not be calculated (i.e., first and last 2 rows)
 
-```{r}
+```{r remove entries without calculated slope}
 cleaned_data <- cleaned_data %>%
   filter(!is.na(slope) & !is.na(rsq))
 ```
@@ -310,14 +312,14 @@ artefacts that must be removed.
 
 We will set our lower rsq threshold as `filter_rsq`
 
-```{r}
+```{r set threshold for filtering low rsq entries}
 filter_rsq <- 0.5
 ```
 
 Filter the data to eliminate the readings with rsq lower than the set
 threshold
 
-```{r}
+```{r filter data to eliminate low rsq entries}
 cleaned_data <- 
   cleaned_data%>%
   subset(rsq >= filter_rsq)
@@ -329,7 +331,7 @@ Next, we create a function `calc_flux` to calculate the net
 photosynthetic carbon assimilation (NPCA) as
 $\mu mols~CO_2~m^{-2}~s^{-1}$ using the ideal gas law.
 
-```{r}
+```{r function to calculate NPCA}
 calc_flux <- function(slope, T, V, A) {
   p <- 1  # atmospheric pressure in atm
   R <- 0.082  # ideal gas constant in L atm K−1 mol−1
@@ -360,7 +362,7 @@ Here,
 Set the volume of the chamber and the area of the canopy, which are used
 in the flux calculation.
 
-```{r}
+```{r setting the chamber volumen and leaf area}
 V <- 100  #  value in liters
 A <- 1  #  value in m^2
 ```
@@ -370,14 +372,14 @@ A <- 1  #  value in m^2
 Add a new column `flux` to `cleaned_data` by applying the `calc_flux`
 function to each row.
 
-```{r}
+```{r calculate the flux}
 cleaned_data <- cleaned_data %>%
   mutate(flux = calc_flux(slope, temp, V, A))
 ```
 
 ### Visualize the NPCA derived from the processed dataset
 
-```{r}
+```{r visualise the NPCA from processed data}
 ggplot(aes(x=minutes, y=flux), data = cleaned_data) +
   geom_line()+ 
   labs(x="Time (hours)", y=expression(CO[2]~(ppm)))+
@@ -397,7 +399,7 @@ if parsed through in the data, we find are due to the injection events.
 We can eliminate these anomalies by manually filtering out these
 anomalous data-points as such:
 
-```{r}
+```{r remove visually determined anomalies}
 npca_data <- 
   cleaned_data%>%
   subset(flux > -2)
@@ -408,7 +410,7 @@ created a final data frame called `npca_data`.
 
 Lets plot the final data:
 
-```{r}
+```{r plot final data}
 ggplot(aes(x=minutes, y=flux), data = npca_data) +
   geom_line()+ 
   labs(x="Time (hours)", y=expression(CO[2]~(ppm)))+
@@ -440,7 +442,7 @@ for. Adjust as necessary. Run the Rosner's test.
 
 ```{r}
 k <- 10  # example value, adjust based on your needs
-rosner_test <- rosnerTest(npca_data$flux, k = k)
+rosner_test <- EnvStats::rosnerTest(npca_data$flux, k = k)
 ```
 
 ### View the results of the Rosner's test
@@ -462,6 +464,6 @@ rosner_test$all.stats[rosner_test$all.stats$Outlier, "Index"]
 
 Next, we remove the outliers from the cleaned_data
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 npca_data_no_outliers <- npca_data[-outlier_indices, ]
 ```

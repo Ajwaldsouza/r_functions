@@ -1,7 +1,7 @@
 librarian::shelf(plyr, dplyr, readr, tidyverse, janitor, expss,
                  rstudioapi,  readxl, cowplot, ggpubr, 
-                 photobiology, photobiologyWavebands, ggspectra,
-                 quiet = T,sysfonts,
+                 photobiology, photobiologyWavebands, ggspectra,sysfonts,showtext,
+                 quiet = T,
                  update_all = FALSE)
 
 ##Setup working Directory
@@ -20,6 +20,35 @@ spec_data <- read_delim("Datafile/uMOL_EO1.txt",
   )
 
 colnames(spec_data)
+
+
+
+# # If importing multiple files to calculate average
+# # Importing files
+# mydir="raw_light_data/spectra"                                                            #Mention the directory (as "mydir") in the W.Dir. containing the datafiles
+# file_list= list.files(path=mydir, pattern="*.csv", full.names=TRUE)               #List all the .csv files in the specified "mydir" and assign it to "myfiles". 
+# file_list                                                                         #Shows all the files present 
+# 
+# 
+# # Importing files
+# data_master <- ldply(file_list, read.table, sep = ",", fill=T, header = T)%>%     #collectively apply "import function for all the files in the specified directory
+#   as_tibble()
+# 
+# 
+# colnames(data_master)[1:3] <- c("wave", "ppfd", "max_int") 
+# 
+# 
+# # calculate normalized ppfd
+# data_master$nppfd <- data_master$ppfd/data_master$max_int
+# 
+# 
+# 
+# data_mean <- aggregate(nppfd~wave, data_master, mean) #make a dataset with mean values of four reps
+
+
+
+
+
 
 
 
@@ -56,7 +85,7 @@ spec_plot_b <- ggplot(spec_data) +
             check_overlap = T,
             size = 3.2,
             hjust = "centre",
-            fontfamily = 'Serrif')+
+            family = "Source Sans Pro")+
   stat_color(aes(x= wave, y=ppfd, fill = wave), geom = "line") + 
   scale_color_identity()+
   scale_y_continuous(limits = c(0,9))+
@@ -69,7 +98,7 @@ spec_plot_b
 
 
 
-
+showtext_auto()
 ggsave("spec_plot_PS1000.pdf", spec_plot_b, 
        width = 12, height = 9, units = "cm")
 
